@@ -56,7 +56,7 @@ export default function App() {
           </div>
           <div className="flex flex-col gap-0 select-none">
             <span className="font-heading font-bold text-sm tracking-tight leading-none text-on-surface">Mi Colonia en un Click</span>
-            <span className="text-[9px] font-label-md text-[#00e5ff] leading-none uppercase tracking-widest font-black mt-1">Mesa de Ayuda Inteligente</span>
+            <span className="text-[9px] font-label-md text-[#00e5ff] leading-none uppercase tracking-widest font-black mt-1">Asistente Virtual Vecinal</span>
           </div>
         </div>
 
@@ -139,7 +139,7 @@ export default function App() {
                     <span>Base de Datos de la Colonia:</span>
                   </p>
                   <p className="text-slate-400 text-[11px] leading-relaxed">
-                    Esta mesa de ayuda inteligente está conectada directamente con la base de datos oficial de su colonia alojada de forma segura en <strong className="text-cyan-300 font-semibold">Google Cloud Firestore</strong>.
+                    Esta aplicación está conectada directamente con la base de datos oficial de su colonia alojada de forma segura en <strong className="text-cyan-300 font-semibold">Google Cloud Firestore</strong>.
                   </p>
                   <div className="text-[10px] space-y-1 pt-2 font-mono text-slate-500 border-t border-outline-variant/10">
                     <p className="text-emerald-400">• Estado: Conectado y Sincronizado</p>
