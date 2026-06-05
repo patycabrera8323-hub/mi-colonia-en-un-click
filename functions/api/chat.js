@@ -120,8 +120,8 @@ export async function onRequestPost(context) {
       console.error("Gemini API error:", geminiResp.status, errorBody);
       return new Response(
         JSON.stringify({
-          text: `⚠️ ¡Ay, vecino! Hubo un problemita con el servidor de IA (Error ${geminiResp.status}). Intenta de nuevo en un momento.`,
-          mcpLogs: [{ type: "error", message: `❌ Gemini API error ${geminiResp.status}: ${errorBody.slice(0, 200)}`, timestamp: Date.now() }],
+          text: `⚠️ ¡Ay, vecino! Hubo un problemita con el servidor de IA (Error ${geminiResp.status}).\nDetalle del error:\n${errorBody}\n\nIntenta de nuevo en un momento.`,
+          mcpLogs: [{ type: "error", message: `❌ Gemini API error ${geminiResp.status}: ${errorBody}`, timestamp: Date.now() }],
           booking: null
         }),
         { status: 200, headers: corsHeaders() }
