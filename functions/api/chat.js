@@ -95,8 +95,8 @@ export async function onRequestPost(context) {
       });
     }
 
-    // Call Gemini REST API
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // Call Gemini REST API - Using gemini-3.5-flash as verified by the account capability list
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     const geminiBody = {
       systemInstruction: {
@@ -118,26 +118,10 @@ export async function onRequestPost(context) {
     if (!geminiResp.ok) {
       const errorBody = await geminiResp.text();
       console.error("Gemini API error:", geminiResp.status, errorBody);
-      
-      // Attempt to list available models to diagnose
-      let availableModelsStr = "No se pudieron obtener los modelos disponibles.";
-      try {
-        const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
-        if (listResp.ok) {
-          const listData = await listResp.json();
-          const modelNames = listData.models ? listData.models.map(m => m.name.replace("models/", "")) : [];
-          availableModelsStr = modelNames.join(", ");
-        } else {
-          availableModelsStr = `Error al listar modelos: ${listResp.status}`;
-        }
-      } catch (listErr) {
-        availableModelsStr = `Fallo al listar modelos: ${listErr.message}`;
-      }
-
       return new Response(
         JSON.stringify({
-          text: `⚠️ ¡Ay, vecino! Hubo un problemita con el servidor de IA (Error ${geminiResp.status}).\n\n**Detalle del error original:**\n${errorBody}\n\n**Modelos disponibles en tu cuenta:**\n${availableModelsStr}\n\nIntenta de nuevo en un momento.`,
-          mcpLogs: [{ type: "error", message: `❌ Gemini API error ${geminiResp.status}: ${errorBody} | Models: ${availableModelsStr}`, timestamp: Date.now() }],
+          text: `⚠️ ¡Ay, vecino! Hubo un problemita con el servidor de IA (Error ${geminiResp.status}). Intenta de nuevo en un momento.`,
+          mcpLogs: [{ type: "error", message: `❌ Gemini API error ${geminiResp.status}: ${errorBody}`, timestamp: Date.now() }],
           booking: null
         }),
         { status: 200, headers: corsHeaders() }
