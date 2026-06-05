@@ -1,0 +1,6 @@
+{
+  "name": "Mi Colonia en un Click",
+  "description": "Asistente inteligente con soporte de Model Context Protocol (MCP) y bases de datos locales para el vecindario de Jesus Israel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

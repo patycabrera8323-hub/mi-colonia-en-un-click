@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account schema",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "email", "createdAt"]
+    },
+    "Message": {
+      "title": "Chat Message",
+      "description": "Message in chat history",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "text": { "type": "string" },
+        "sender": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "text", "sender", "createdAt"]
+    },
+    "Restaurant": {
+      "title": "Restaurant",
+      "description": "Local restaurant information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "cuisine": { "type": "string" },
+        "description": { "type": "string" },
+        "rating": { "type": "number" },
+        "address": { "type": "string" },
+        "image": { "type": "string" },
+        "phoneNumber": { "type": "string" }
+      },
+      "required": ["id", "name", "cuisine", "address"]
+    },
+    "BacheReport": {
+      "title": "Bache Report",
+      "description": "Report of a pothole in the neighborhood",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "description": { "type": "string" },
+        "address": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "description", "address", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/chats/{messageId}": {
+      "schema": "Message",
+      "description": "Real-time user chat messages with the bot"
+    },
+    "/restaurants/{restaurantId}": {
+      "schema": "Restaurant",
+      "description": "Directory of neighborhood restaurants connected to MCP tool"
+    },
+    "/reports/{reportId}": {
+      "schema": "BacheReport",
+      "description": "Neighborhood reports for potholes or baches"
+    }
+  }
+}

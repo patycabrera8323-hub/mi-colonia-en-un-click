@@ -1,0 +1,132 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- REUSABLE SECURITY PRIMITIVES ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+             request.auth.token.email == 'searmoco@gmail.com' && 
+             request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- ENTITY SCHEMA VALIDATION HELPERS ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'name', 'email', 'createdAt']) &&
+             data.keys().size() == 4 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 150 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['userId', 'text', 'sender', 'createdAt']) &&
+             data.keys().size() == 4 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.text is string && data.text.size() <= 4000 &&
+             data.sender in ['user', 'bot'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidRestaurant(data) {
+      return data.keys().hasAll(['id', 'name', 'cuisine', 'address', 'description', 'rating', 'image', 'phoneNumber']) &&
+             data.keys().size() == 8 &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 200 &&
+             data.cuisine is string && data.cuisine.size() <= 100 &&
+             data.address is string && data.address.size() <= 500 &&
+             data.description is string && data.description.size() <= 1000 &&
+             data.rating is number && data.rating >= 0 && data.rating <= 5 &&
+             data.image is string && data.image.size() <= 1000 &&
+             data.phoneNumber is string && data.phoneNumber.size() <= 30;
+    }
+
+    function isValidBacheReport(data) {
+      return data.keys().hasAll(['userId', 'description', 'address', 'status', 'createdAt']) &&
+             (data.keys().size() == 5 || (data.keys().size() == 6 && data.id is string)) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.description is string && data.description.size() <= 2000 &&
+             data.address is string && data.address.size() <= 500 &&
+             data.status in ['pending', 'in_progress', 'resolved'] &&
+             (data.createdAt is timestamp || data.createdAt is number);
+    }
+
+    // --- COLLECTION RULES ---
+
+    // 1. User Profiles: split strategy or strict isolation for PII
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().createdAt == request.time;
+      allow update: if (isOwner(userId) || isAdmin()) && 
+                    isValidUser(incoming()) && 
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().userId == existing().userId;
+      allow delete: if isAdmin();
+    }
+
+    // 2. Chat history (between current user and the bot)
+    match /chats/{messageId} {
+      allow get: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && 
+                    isValidMessage(incoming()) && 
+                    incoming().userId == request.auth.uid && 
+                    incoming().createdAt == request.time;
+      // No updates to message history to guarantee conversation log integrity.
+      allow update: if false;
+      allow delete: if isSignedIn() && 
+                    (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    // 3. Restaurants Directory (Public directory, writable by Admins only)
+    match /restaurants/{restaurantId} {
+      allow read: if true; // anyone can fetch local restaurants list
+      allow create: if isAdmin() && isValidRestaurant(incoming());
+      allow update: if isAdmin() && isValidRestaurant(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 4. Neighborhood pothole reports
+    match /reports/{reportId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isValidBacheReport(incoming());
+      allow update: if isValidBacheReport(incoming()) &&
+                    incoming().userId == existing().userId &&
+                    (
+                      existing().status == 'pending' ||
+                      isAdmin()
+                    );
+      allow delete: if true;
+    }
+  }
+}
