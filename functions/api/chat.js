@@ -59,30 +59,47 @@ export async function onRequestPost(context) {
       { type: "info", message: "🔌 [Gigi] Conectando con el asistente vecinal...", timestamp: Date.now() }
     ];
 
-    // Build conversation contents for Gemini
+    // Build conversation contents for Gemini ensuring strictly alternating roles
     const contents = [];
+    let lastRole = null;
 
     if (history && Array.isArray(history)) {
       for (const h of history.slice(-8)) { // last 8 messages for context
         if (h.text && h.text.trim()) {
-          contents.push({
-            role: h.sender === "user" ? "user" : "model",
-            parts: [{ text: h.text }]
-          });
+          const role = h.sender === "user" ? "user" : "model";
+          if (role === lastRole) {
+            // Merge consecutive messages from same role to maintain strict alternation
+            if (contents.length > 0) {
+              contents[contents.length - 1].parts[0].text += "\n" + h.text;
+            }
+          } else {
+            contents.push({
+              role: role,
+              parts: [{ text: h.text }]
+            });
+            lastRole = role;
+          }
         }
       }
     }
 
-    contents.push({
-      role: "user",
-      parts: [{ text: message }]
-    });
+    // Append current user message
+    if (lastRole === "user") {
+      if (contents.length > 0) {
+        contents[contents.length - 1].parts[0].text += "\n" + message;
+      }
+    } else {
+      contents.push({
+        role: "user",
+        parts: [{ text: message }]
+      });
+    }
 
     // Call Gemini REST API
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     const geminiBody = {
-      system_instruction: {
+      systemInstruction: {
         parts: [{ text: SYSTEM_PROMPT }]
       },
       contents,
