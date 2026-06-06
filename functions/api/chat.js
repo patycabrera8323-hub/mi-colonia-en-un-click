@@ -95,8 +95,8 @@ export async function onRequestPost(context) {
       });
     }
 
-    // Call Gemini REST API - Using gemini-2.0-flash (available in account)
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // Call Gemini REST API - Using gemini-2.0-flash-lite (lower quota usage)
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
 
     const geminiBody = {
       systemInstruction: {
@@ -119,17 +119,28 @@ export async function onRequestPost(context) {
       const errorBody = await geminiResp.text();
       console.error("Gemini API error:", geminiResp.status, errorBody);
       let errorDetail = errorBody;
-      let extraMsg = "";
       try {
         const errJson = JSON.parse(errorBody);
         if (errJson?.error?.message) errorDetail = errJson.error.message;
       } catch(_) {}
-      if (geminiResp.status === 404) {
-        extraMsg = "\n\nDetalle del error original:\n" + errorBody;
+
+      // Friendly message for quota exceeded
+      if (geminiResp.status === 429) {
+        return new Response(
+          JSON.stringify({
+            text: "😅 ¡Híjole, vecino! Gigi está un poco saturada en este momento (se excedió el límite de consultas del día). Por favor intenta de nuevo en unos minutos. ¡Gracias por tu paciencia! 🙏",
+            mcpLogs: [{ type: "warn", message: "⚠️ Cuota de Gemini excedida (429). Intenta más tarde.", timestamp: Date.now() }],
+            booking: null
+          }),
+          { status: 200, headers: corsHeaders() }
+        );
       }
+
       return new Response(
         JSON.stringify({
-          text: `⚠️ ¡Ay, vecino! Hubo un problemita con el servidor de IA (Error ${geminiResp.status}).\n\n${errorDetail}${extraMsg}`,
+          text: `⚠️ ¡Ay, vecino! Hubo un problemita con el servidor de IA (Error ${geminiResp.status}).
+
+${errorDetail}`,
           mcpLogs: [{ type: "error", message: `❌ Gemini API error ${geminiResp.status}: ${errorDetail}`, timestamp: Date.now() }],
           booking: null
         }),
