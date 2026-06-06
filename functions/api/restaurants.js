@@ -1,6 +1,8 @@
 // Cloudflare Pages Function: /api/restaurants
-// Lee los negocios ACTIVOS directamente de Firebase Firestore
-// Colección: 'negocios' (la misma donde el admin da de alta los negocios)
+// Lee negocios de Firebase:
+//   1. Colección 'negocios' (negocios dados de alta manualmente o sincronizados desde admin)
+//   2. Colección 'users' (negocios autorizados que se registraron en el panel de admin)
+// Combina ambas fuentes para el catálogo
 
 const FIREBASE_PROJECT = "bot-mi-meracdo";
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
@@ -20,57 +22,110 @@ export async function onRequestOptions() {
 }
 
 /**
- * Convierte el formato de Firestore REST API al formato usado por la app
+ * Extrae el valor de un campo Firestore REST
  */
-function firestoreFieldToValue(fieldValue) {
+function getFieldValue(fieldValue) {
   if (!fieldValue) return null;
   if (fieldValue.stringValue !== undefined) return fieldValue.stringValue;
   if (fieldValue.integerValue !== undefined) return parseInt(fieldValue.integerValue);
   if (fieldValue.doubleValue !== undefined) return parseFloat(fieldValue.doubleValue);
   if (fieldValue.booleanValue !== undefined) return fieldValue.booleanValue;
-  if (fieldValue.nullValue !== undefined) return null;
   return null;
 }
 
-function firestoreDocToNegocio(doc) {
-  const fields = doc.fields || {};
-  const id = doc.name.split("/").pop(); // last segment = document ID
-  
+/**
+ * Convierte un documento de 'negocios' al formato de la app
+ */
+function negocioDocToCard(doc) {
+  const f = doc.fields || {};
+  const id = doc.name.split("/").pop();
+  const activo = getFieldValue(f.activo);
+  if (activo === false) return null; // excluir inactivos
+
   return {
     id,
-    name:        firestoreFieldToValue(fields.nombre)      || "",
-    cuisine:     firestoreFieldToValue(fields.tipo)        || firestoreFieldToValue(fields.categoria) || "general",
-    description: firestoreFieldToValue(fields.descripcion) || "",
-    rating:      parseFloat(firestoreFieldToValue(fields.calificacion)) || 4.5,
-    address:     firestoreFieldToValue(fields.direccion)   || "",
-    image:       firestoreFieldToValue(fields.imagen)      || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=500&q=80",
-    phoneNumber: firestoreFieldToValue(fields.telefono)    || "",
-    horario:     firestoreFieldToValue(fields.horario)     || "",
-    activo:      firestoreFieldToValue(fields.activo),
-    categoria:   firestoreFieldToValue(fields.categoria)   || "",
+    name:        getFieldValue(f.nombre)      || "",
+    cuisine:     (getFieldValue(f.tipo)        || getFieldValue(f.categoria) || "general").toLowerCase(),
+    description: getFieldValue(f.descripcion) || "",
+    rating:      parseFloat(getFieldValue(f.calificacion) ?? 4.5),
+    address:     getFieldValue(f.direccion)   || "",
+    image:       getFieldValue(f.imagen)      || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=500&q=80",
+    phoneNumber: getFieldValue(f.telefono)    || "",
+    horario:     getFieldValue(f.horario)     || "",
   };
 }
 
-export async function onRequestGet(context) {
-  try {
-    // Lee de la colección 'negocios' - pública (allow read: if true)
-    const url = `${FIRESTORE_BASE}/negocios?key=${FIREBASE_API_KEY}`;
-    const res = await fetch(url);
+/**
+ * Convierte un documento de 'users' al formato de la app
+ * Solo incluye usuarios autorizados con nombre de negocio
+ */
+function userDocToCard(doc) {
+  const f = doc.fields || {};
+  const id = doc.name.split("/").pop();
+  
+  const isAuthorized = getFieldValue(f.isAuthorized);
+  const businessName = getFieldValue(f.businessName);
+  
+  // Solo comercios autorizados y con nombre de negocio
+  if (!isAuthorized || !businessName || businessName.trim() === "") return null;
+  // Excluir al admin principal
+  const email = getFieldValue(f.email) || "";
+  if (email === "searmoco@gmail.com") return null;
 
-    if (!res.ok) {
-      throw new Error(`Firestore respondió con status ${res.status}`);
+  return {
+    id:          `user_${id}`,
+    name:        businessName,
+    cuisine:     (getFieldValue(f.businessType) || getFieldValue(f.category) || "comercio").toLowerCase(),
+    description: getFieldValue(f.description)  || `Negocio local de la colonia: ${businessName}`,
+    rating:      4.5,
+    address:     getFieldValue(f.location)     || getFieldValue(f.address) || "",
+    image:       getFieldValue(f.logoUrl)      || getFieldValue(f.imagen)  || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=500&q=80",
+    phoneNumber: getFieldValue(f.phone)        || "",
+    horario:     getFieldValue(f.horario)      || "",
+  };
+}
+
+export async function onRequestGet() {
+  try {
+    // Leer ambas colecciones en paralelo
+    const [negociosRes, usersRes] = await Promise.allSettled([
+      fetch(`${FIRESTORE_BASE}/negocios?key=${FIREBASE_API_KEY}`),
+      fetch(`${FIRESTORE_BASE}/users?key=${FIREBASE_API_KEY}`)
+    ]);
+
+    const allNegocios = [];
+    const seenNames = new Set(); // evitar duplicados si ya fue sincronizado
+
+    // Procesar colección 'negocios'
+    if (negociosRes.status === "fulfilled" && negociosRes.value.ok) {
+      const data = await negociosRes.value.json();
+      for (const doc of (data.documents || [])) {
+        const card = negocioDocToCard(doc);
+        if (card && card.name) {
+          allNegocios.push(card);
+          seenNames.add(card.name.toLowerCase().trim());
+        }
+      }
     }
 
-    const data = await res.json();
-    const docs = data.documents || [];
+    // Procesar colección 'users' (comercios autorizados que no estén ya en negocios)
+    if (usersRes.status === "fulfilled" && usersRes.value.ok) {
+      const data = await usersRes.value.json();
+      for (const doc of (data.documents || [])) {
+        const card = userDocToCard(doc);
+        if (card && card.name) {
+          const nameLower = card.name.toLowerCase().trim();
+          // Solo agregar si no hay ya un negocio con ese nombre en la colección negocios
+          if (!seenNames.has(nameLower)) {
+            allNegocios.push(card);
+            seenNames.add(nameLower);
+          }
+        }
+      }
+    }
 
-    // Convertir formato Firestore → formato de la app
-    const negocios = docs
-      .map(firestoreDocToNegocio)
-      .filter(n => n.name && n.activo !== false); // Solo activos
-
-    // Si Firebase no devuelve nada, usar fallback mínimo
-    if (negocios.length === 0) {
+    // Si no hay nada, devolver fallback mínimo
+    if (allNegocios.length === 0) {
       return new Response(JSON.stringify([
         {
           id: "fallback_1",
@@ -85,11 +140,10 @@ export async function onRequestGet(context) {
       ]), { headers: corsHeaders() });
     }
 
-    return new Response(JSON.stringify(negocios), { headers: corsHeaders() });
+    return new Response(JSON.stringify(allNegocios), { headers: corsHeaders() });
 
   } catch (err) {
-    console.error("Error al leer negocios de Firebase:", err);
-    // Devolver array vacío en caso de error para no romper la UI
+    console.error("Error al leer negocios:", err);
     return new Response(JSON.stringify([]), {
       status: 200,
       headers: corsHeaders()
