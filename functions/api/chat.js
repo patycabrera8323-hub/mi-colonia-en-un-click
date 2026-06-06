@@ -95,8 +95,8 @@ export async function onRequestPost(context) {
       });
     }
 
-    // Call Gemini REST API - Using gemini-3.5-flash as verified by the account capability list
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // Call Gemini REST API - Using gemini-2.0-flash (available in account)
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     const geminiBody = {
       systemInstruction: {
@@ -118,10 +118,19 @@ export async function onRequestPost(context) {
     if (!geminiResp.ok) {
       const errorBody = await geminiResp.text();
       console.error("Gemini API error:", geminiResp.status, errorBody);
+      let errorDetail = errorBody;
+      let extraMsg = "";
+      try {
+        const errJson = JSON.parse(errorBody);
+        if (errJson?.error?.message) errorDetail = errJson.error.message;
+      } catch(_) {}
+      if (geminiResp.status === 404) {
+        extraMsg = "\n\nDetalle del error original:\n" + errorBody;
+      }
       return new Response(
         JSON.stringify({
-          text: `⚠️ ¡Ay, vecino! Hubo un problemita con el servidor de IA (Error ${geminiResp.status}). Intenta de nuevo en un momento.`,
-          mcpLogs: [{ type: "error", message: `❌ Gemini API error ${geminiResp.status}: ${errorBody}`, timestamp: Date.now() }],
+          text: `⚠️ ¡Ay, vecino! Hubo un problemita con el servidor de IA (Error ${geminiResp.status}).\n\n${errorDetail}${extraMsg}`,
+          mcpLogs: [{ type: "error", message: `❌ Gemini API error ${geminiResp.status}: ${errorDetail}`, timestamp: Date.now() }],
           booking: null
         }),
         { status: 200, headers: corsHeaders() }
