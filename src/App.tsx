@@ -45,18 +45,8 @@ export default function App() {
       {/* Top Header Glass Rail matching user's template exactly */}
       <header id="app-main-header" className="sticky top-0 z-50 flex items-center justify-between h-14 px-4 bg-surface-container-low/80 border-b border-outline-variant/10 backdrop-blur-xl shadow-lg">
         <div className="flex items-center gap-3">
-          {/* Pulsing bot icon with restored logo */}
-          <div className="h-9 w-9 rounded-full overflow-hidden flex items-center justify-center border border-[#00e5ff] shadow-[0_0_12px_rgba(0,229,255,0.5)] pulse bg-[#0a0e1a]">
-            <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" className="h-full w-full">
-              <circle cx="20" cy="20" r="20" fill="#0d1b2a"/>
-              <rect x="11" y="14" width="18" height="14" rx="4" fill="#00e5ff" opacity="0.15"/>
-              <rect x="11" y="14" width="18" height="14" rx="4" stroke="#00e5ff" strokeWidth="1.5" fill="none"/>
-              <circle cx="16" cy="20" r="2.5" fill="#00e5ff"/>
-              <circle cx="24" cy="20" r="2.5" fill="#00e5ff"/>
-              <path d="M16 25 Q20 27.5 24 25" stroke="#00e5ff" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
-              <rect x="18.5" y="10" width="3" height="4" rx="1.5" fill="#00e5ff"/>
-              <circle cx="20" cy="9.5" r="1.5" fill="#00e5ff" opacity="0.8"/>
-            </svg>
+          <div className="h-9 w-9 rounded-full overflow-hidden flex items-center justify-center border border-[#00e5ff] shadow-[0_0_12px_rgba(0,229,255,0.5)] pulse">
+            <img src="/logo.jpg" alt="Logo" className="h-full w-full object-cover" />
           </div>
           <div className="flex flex-col gap-0 select-none">
             <span className="font-heading font-bold text-sm tracking-tight leading-none text-on-surface">Mi Colonia en un Click</span>
