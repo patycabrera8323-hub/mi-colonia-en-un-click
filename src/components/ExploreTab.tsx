@@ -8,13 +8,21 @@ export default function ExploreTab() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCuisine, setSelectedCuisine] = useState('todos');
 
+  // Build categories dynamically from the actual data
+  const cuisineEmojis: Record<string, string> = {
+    mexicana: '🌮', italiana: '🍕', hamburguesas: '🍔', cafeteria: '☕',
+    asiatica: '🥢', restaurante: '🍽️', farmacia: '💊', papeleria: '📋',
+    panaderia: '🥐', carniceria: '🥩', verduras: '🥦', pizza: '🍕',
+    mariscos: '🦞', tacos: '🌮', sushi: '🍣', cafe: '☕',
+  };
+
   const categories = [
     { id: 'todos', label: 'Todos' },
-    { id: 'mexicana', label: 'Mexicana🌮' },
-    { id: 'italiana', label: 'Italiana🍕' },
-    { id: 'hamburguesas', label: 'Burgers🍔' },
-    { id: 'cafeteria', label: 'Café☕' },
-    { id: 'asiatica', label: 'Asiática🥢' },
+    ...Array.from(new Set(restaurants.map(r => (r.cuisine ?? '').toLowerCase()).filter(Boolean)))
+      .map(c => ({
+        id: c,
+        label: `${c.charAt(0).toUpperCase() + c.slice(1)}${cuisineEmojis[c] ? ' ' + cuisineEmojis[c] : ''}`
+      }))
   ];
 
   useEffect(() => {
@@ -139,7 +147,11 @@ export default function ExploreTab() {
                 <h3 id={`restaurant-name-${res.id}`} className="text-base font-bold text-slate-100">{res.name}</h3>
                 <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">{res.description}</p>
                 
-                <div className="pt-2 flex items-center justify-between text-xs text-slate-400 border-t border-slate-800/60 mt-3">
+                <div className="pt-2 space-y-1.5">
+                  {(res as any).horario && (
+                    <p className="text-[10px] text-slate-500">🕐 {(res as any).horario}</p>
+                  )}
+                <div className="flex items-center justify-between text-xs text-slate-400 border-t border-slate-800/60 pt-1.5">
                   <div className="flex items-center gap-1.5 max-w-[70%]">
                     <MapPin className="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" />
                     <span className="truncate">{res.address}</span>
@@ -153,6 +165,7 @@ export default function ExploreTab() {
                     <Phone className="w-3 h-3 text-cyan-400" />
                     Llamar
                   </a>
+                </div>
                 </div>
               </div>
             </div>
