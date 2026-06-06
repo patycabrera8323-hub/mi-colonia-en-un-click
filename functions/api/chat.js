@@ -1,26 +1,18 @@
 // Cloudflare Pages Function: /api/chat
 // Gigi - Asistente Virtual de Mi Colonia en un Click
+// OPTIMIZADO: mínimo uso de tokens
 
-const RESTAURANT_DATA = [
-  { id: "rest_1", name: "Tacos El Güero", cuisine: "mexicana", description: "Los mejores tacos al pastor y de asada de la zona.", rating: 4.8, address: "Av. de la Juventud #123, Sector Centro", phoneNumber: "555-019-1234" },
-  { id: "rest_2", name: "La Piazza Bella", cuisine: "italiana", description: "Pizzas en horno de piedra y pastas frescas.", rating: 4.6, address: "Calle Los Pinos #456, Sector Norte", phoneNumber: "555-019-5678" },
-  { id: "rest_3", name: "Burger & Co. Craft", cuisine: "hamburguesas", description: "Hamburguesas artesanal premium con papas sazonadas.", rating: 4.7, address: "Bulevar Margaritas #789, Sector Sur", phoneNumber: "555-019-9012" },
-  { id: "rest_4", name: "Cafetería La Selva", cuisine: "cafeteria", description: "Café orgánico, repostería fina y desayunos tradicionales.", rating: 4.5, address: "Av. Lázaro Cárdenas #321, Sector Centro", phoneNumber: "555-019-3344" },
-  { id: "rest_5", name: "Sabor de Asia", cuisine: "asiatica", description: "Sushi, ramen y arroz frito en wok al momento.", rating: 4.4, address: "Calle de las Palmas #202, Sector Este", phoneNumber: "555-019-5566" }
-];
+// System prompt compacto (ahorra ~60% tokens vs versión anterior)
+const SYSTEM_PROMPT = `Eres Gigi, asistente de "Mi Colonia en un Click". Responde SIEMPRE en español mexicano, alegre y breve (máx 3 oraciones). Usa: "¡Hola vecino!", "¡Órale!", "¡Ándale!".
 
-const SYSTEM_PROMPT = `Eres Gigi, la asistente virtual alegre y empática de "Mi Colonia en un Click".
-Ayudas a los vecinos con información de restaurantes, reservaciones, reportes y negocios locales.
-Responde SIEMPRE con un tono muy alegre, empático y amigable con acento mexicano.
-Usa expresiones como: "¡Hola, vecino!", "¡Claro que sí!", "¡qué gusto saludarte!", "órale", "¡Con mucho gusto!", "¡Híjole!", "¡Ándale!".
-NUNCA uses groserías ni palabras altisonantes. Mantén lenguaje respetuoso y servicial.
+Restaurantes disponibles:
+1. Tacos El Güero (mexicana) ⭐4.8 | Av. Juventud #123 | Tel:555-019-1234
+2. La Piazza Bella (italiana) ⭐4.6 | Calle Los Pinos #456 | Tel:555-019-5678
+3. Burger & Co. Craft (hamburguesas) ⭐4.7 | Blvd. Margaritas #789 | Tel:555-019-9012
+4. Cafetería La Selva (café) ⭐4.5 | Av. Lázaro Cárdenas #321 | Tel:555-019-3344
+5. Sabor de Asia (asiática) ⭐4.4 | Calle Palmas #202 | Tel:555-019-5566
 
-Restaurantes disponibles en la colonia:
-${RESTAURANT_DATA.map(r => `- ${r.name} (${r.cuisine}): ${r.description} | ${r.address} | Tel: ${r.phoneNumber} | Rating: ${r.rating}/5`).join('\n')}
-
-Cuando alguien pregunte por restaurantes, recomiéndales opciones de la lista anterior.
-Cuando quieran hacer una reserva, pide: nombre del restaurante, número de personas, fecha y hora.
-Cuando confirmes una reserva, genera un número de confirmación aleatorio de 5 dígitos.`;
+Para reservas pide: restaurante, personas, fecha y hora. Genera código 5 dígitos al confirmar.`;
 
 function corsHeaders() {
   return {
@@ -44,8 +36,8 @@ export async function onRequestPost(context) {
     if (!GEMINI_API_KEY) {
       return new Response(
         JSON.stringify({
-          text: "⚠️ Hola vecino, hay un pequeño problemita técnico: falta configurar la clave de la IA en el servidor. Avísale al administrador por favor.",
-          mcpLogs: [{ type: "error", message: "❌ GEMINI_API_KEY no está configurada en Cloudflare.", timestamp: Date.now() }],
+          text: "⚠️ Hola vecino, falta configurar la clave de IA. Avísale al administrador.",
+          mcpLogs: [{ type: "error", message: "❌ GEMINI_API_KEY no configurada.", timestamp: Date.now() }],
           booking: null
         }),
         { status: 200, headers: corsHeaders() }
@@ -55,81 +47,61 @@ export async function onRequestPost(context) {
     const body = await request.json();
     const { message, history } = body;
 
-    const mcpLogs = [
-      { type: "info", message: "🔌 [Gigi] Conectando con el asistente vecinal...", timestamp: Date.now() }
-    ];
-
-    // Build conversation contents for Gemini ensuring strictly alternating roles
+    // Solo últimos 4 mensajes de historial (ahorra tokens)
     const contents = [];
     let lastRole = null;
 
     if (history && Array.isArray(history)) {
-      for (const h of history.slice(-8)) { // last 8 messages for context
+      for (const h of history.slice(-4)) {
         if (h.text && h.text.trim()) {
           const role = h.sender === "user" ? "user" : "model";
-          if (role === lastRole) {
-            // Merge consecutive messages from same role to maintain strict alternation
-            if (contents.length > 0) {
-              contents[contents.length - 1].parts[0].text += "\n" + h.text;
-            }
+          if (role === lastRole && contents.length > 0) {
+            contents[contents.length - 1].parts[0].text += " " + h.text;
           } else {
-            contents.push({
-              role: role,
-              parts: [{ text: h.text }]
-            });
+            contents.push({ role, parts: [{ text: h.text }] });
             lastRole = role;
           }
         }
       }
     }
 
-    // Append current user message
-    if (lastRole === "user") {
-      if (contents.length > 0) {
-        contents[contents.length - 1].parts[0].text += "\n" + message;
-      }
+    // Agregar mensaje actual
+    if (lastRole === "user" && contents.length > 0) {
+      contents[contents.length - 1].parts[0].text += " " + message;
     } else {
-      contents.push({
-        role: "user",
-        parts: [{ text: message }]
-      });
+      contents.push({ role: "user", parts: [{ text: message }] });
     }
 
-    // Call Gemini REST API - Using gemini-2.0-flash-lite (lower quota usage)
+    // Gemini 2.0 Flash Lite - menor cuota consumida
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
-
-    const geminiBody = {
-      systemInstruction: {
-        parts: [{ text: SYSTEM_PROMPT }]
-      },
-      contents,
-      generationConfig: {
-        temperature: 0.8,
-        maxOutputTokens: 1024,
-      }
-    };
 
     const geminiResp = await fetch(geminiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(geminiBody)
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 350,  // Reducido de 1024 → 350
+          topP: 0.9
+        }
+      })
     });
 
     if (!geminiResp.ok) {
       const errorBody = await geminiResp.text();
-      console.error("Gemini API error:", geminiResp.status, errorBody);
       let errorDetail = errorBody;
       try {
         const errJson = JSON.parse(errorBody);
         if (errJson?.error?.message) errorDetail = errJson.error.message;
       } catch(_) {}
 
-      // Friendly message for quota exceeded
       if (geminiResp.status === 429) {
         return new Response(
           JSON.stringify({
-            text: "😅 ¡Híjole, vecino! Gigi está un poco saturada en este momento (se excedió el límite de consultas del día). Por favor intenta de nuevo en unos minutos. ¡Gracias por tu paciencia! 🙏",
-            mcpLogs: [{ type: "warn", message: "⚠️ Cuota de Gemini excedida (429). Intenta más tarde.", timestamp: Date.now() }],
+            text: "😅 ¡Híjole vecino! Gigi necesita un descansito, se llenó de mensajes por hoy. ¡Intenta en unos minutitos! 🙏",
+            mcpLogs: [{ type: "warn", message: "⚠️ Cuota Gemini excedida (429).", timestamp: Date.now() }],
             booking: null
           }),
           { status: 200, headers: corsHeaders() }
@@ -138,10 +110,8 @@ export async function onRequestPost(context) {
 
       return new Response(
         JSON.stringify({
-          text: `⚠️ ¡Ay, vecino! Hubo un problemita con el servidor de IA (Error ${geminiResp.status}).
-
-${errorDetail}`,
-          mcpLogs: [{ type: "error", message: `❌ Gemini API error ${geminiResp.status}: ${errorDetail}`, timestamp: Date.now() }],
+          text: `⚠️ ¡Ay vecino! Error ${geminiResp.status} con la IA. Intenta de nuevo.`,
+          mcpLogs: [{ type: "error", message: `❌ Gemini ${geminiResp.status}: ${errorDetail}`, timestamp: Date.now() }],
           booking: null
         }),
         { status: 200, headers: corsHeaders() }
@@ -149,48 +119,33 @@ ${errorDetail}`,
     }
 
     const geminiData = await geminiResp.json();
-
-    // Extract text response
     const responseText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!responseText) {
-      const blockReason = geminiData?.candidates?.[0]?.finishReason || geminiData?.promptFeedback?.blockReason || "unknown";
       return new Response(
         JSON.stringify({
-          text: "¡Hola vecino! No pude generar una respuesta en este momento. ¿Puedes intentarlo de nuevo? 😊",
-          mcpLogs: [{ type: "warn", message: `⚠️ Gemini no devolvió texto. Razón: ${blockReason}`, timestamp: Date.now() }],
+          text: "¡Hola vecino! No pude responder ahora. ¿Repites tu pregunta? 😊",
+          mcpLogs: [{ type: "warn", message: "⚠️ Gemini no devolvió texto.", timestamp: Date.now() }],
           booking: null
         }),
         { status: 200, headers: corsHeaders() }
       );
     }
 
-    // Detect if this is a booking confirmation in the text
-    let detectedBooking = null;
-    const lowerText = responseText.toLowerCase();
-    if ((lowerText.includes("reserva") || lowerText.includes("reservación")) &&
-        (lowerText.includes("confirm") || lowerText.includes("lista") || lowerText.includes("guardada") || lowerText.includes("anotada"))) {
-      // Extract booking details from the message context if possible
-      detectedBooking = null; // Optional: parse from text in the future
-    }
-
-    mcpLogs.push({
-      type: "info",
-      message: `✅ [Gigi] Respuesta generada (${responseText.length} caracteres).`,
-      timestamp: Date.now()
-    });
-
     return new Response(
-      JSON.stringify({ text: responseText, mcpLogs, booking: detectedBooking }),
+      JSON.stringify({
+        text: responseText,
+        mcpLogs: [{ type: "info", message: `✅ Respuesta generada (${responseText.length} chars).`, timestamp: Date.now() }],
+        booking: null
+      }),
       { status: 200, headers: corsHeaders() }
     );
 
   } catch (err) {
-    console.error("Function error:", err);
     return new Response(
       JSON.stringify({
-        text: "¡Uy, vecino! Algo salió mal de nuestro lado. Por favor intenta de nuevo en un momento. 🙏",
-        mcpLogs: [{ type: "error", message: `❌ Error interno: ${err.message}`, timestamp: Date.now() }],
+        text: "¡Uy vecino! Algo salió mal. Intenta de nuevo en un momento. 🙏",
+        mcpLogs: [{ type: "error", message: `❌ Error: ${err.message}`, timestamp: Date.now() }],
         booking: null
       }),
       { status: 200, headers: corsHeaders() }
