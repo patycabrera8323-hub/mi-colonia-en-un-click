@@ -27,7 +27,8 @@ export default function ExploreTab() {
       const res = await fetch('/api/restaurants');
       if (res.ok) {
         const data = await res.json();
-        setRestaurants(data);
+        // Filter out any items without at least a name
+        setRestaurants((data as Restaurant[]).filter((r) => r && r.name));
       }
     } catch (e) {
       console.error("Error fetching restaurants from backend:", e);
@@ -37,11 +38,16 @@ export default function ExploreTab() {
   };
 
   const filteredRestaurants = restaurants.filter((r) => {
-    const matchesSearch = r.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          r.cuisine.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          r.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const query = searchQuery.toLowerCase();
+    const name = (r.name ?? '').toLowerCase();
+    const cuisine = (r.cuisine ?? '').toLowerCase();
+    const description = (r.description ?? '').toLowerCase();
+
+    const matchesSearch = name.includes(query) || 
+                          cuisine.includes(query) ||
+                          description.includes(query);
     
-    const matchesCuisine = selectedCuisine === 'todos' || r.cuisine.toLowerCase() === selectedCuisine;
+    const matchesCuisine = selectedCuisine === 'todos' || cuisine === selectedCuisine;
     
     return matchesSearch && matchesCuisine;
   });
@@ -125,7 +131,7 @@ export default function ExploreTab() {
 
                 <span className="absolute bottom-3 right-3 flex items-center gap-1 bg-slate-950/85 backdrop-blur-md text-amber-400 font-black text-xs px-2.5 py-1 rounded-full border border-amber-500/20">
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                  {res.rating.toFixed(1)}
+                  {(res.rating ?? 0).toFixed(1)}
                 </span>
               </div>
 
