@@ -1,97 +1,99 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // ─── SEGURIDAD Y LOGICA COMUN ─────────────────────────────────────────────
 
-    // ─── FUNCIONES REUTILIZABLES ─────────────────────────────────────────────
-
-    // ¿El usuario tiene sesión iniciada con Firebase Auth?
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // ¿El usuario es el administrador del proyecto?
-    function isAdmin() {
-      return isSignedIn() &&
-             request.auth.token.email in [
-               'patycabrera8323@gmail.com',
-               'jesus.israel@gmail.com',
-               'jicr109@gmail.com'
-             ] &&
-             request.auth.token.email_verified == true;
-    }
-
-    // ¿El usuario es el dueño del documento?
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Validación de reportes / reservaciones
-    function isValidReport(data) {
-      return data.keys().hasAll(['userId', 'description', 'address', 'status', 'createdAt']) &&
-             data.userId is string && data.userId.size() <= 256 &&
-             data.description is string && data.description.size() <= 2000 &&
-             data.address is string && data.address.size() <= 500 &&
-             data.status in ['pending', 'in_progress', 'resolved'] &&
-             (data.createdAt is timestamp || data.createdAt is number);
+    function isUserAdmin() {
+      return isSignedIn() &&
+             request.auth.token.email in [
+               'searmoco@gmail.com',
+               'patycabrera8323@gmail.com',
+               'jesus.israel@gmail.com',
+               'jicr109@gmail.com'
+             ];
     }
 
-    // Validación de mensajes de chat
-    function isValidChatMessage(data) {
-      return data.keys().hasAll(['userId', 'role', 'text', 'createdAt']) &&
-             data.userId is string && data.userId.size() <= 256 &&
-             data.role in ['user', 'model'] &&
-             data.text is string && data.text.size() <= 4000 &&
-             (data.createdAt is timestamp || data.createdAt is number);
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAuthorizedUser() {
+      return isUserAdmin() || (isSignedIn() && getUserData().isAuthorized == true);
     }
 
     // ─── REGLAS POR COLECCIÓN ────────────────────────────────────────────────
 
-    // 1. Perfiles de usuario
+    // 1. Perfiles de usuario (Admin Terminal y Clientes)
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create, update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
+      allow read, write: if isOwner(userId) || isUserAdmin();
+      allow delete: if isUserAdmin();
     }
 
-    // 2. Mensajes de Chat con Gigi
-    //    Permite que cualquier usuario (incluso sin sesión Firebase real,
-    //    como el usuario de demostración "Jesus Israel") pueda guardar mensajes.
-    match /chat_messages/{messageId} {
+    // 2. Repartidores (Drivers)
+    match /drivers/{driverId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(driverId) || isUserAdmin();
+    }
+
+    // 3. Productos (Catálogos)
+    match /products/{productId} {
       allow read: if true;
-      allow create: if true;    // Abierto para desarrollo; restringe después
-      allow update: if false;   // Los mensajes no se editan
-      allow delete: if isAdmin();
+      allow write: if isUserAdmin() || (isAuthorizedUser() && getUserData().canEdit == true);
     }
 
-    // 3. Directorio de Restaurantes de la Colonia (sólo lectura pública)
+    // 4. Pedidos y Órdenes
+    match /orders/{orderId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isUserAdmin();
+    }
+
+    // 5. Estado de apertura del negocio
+    match /storeState/{businessId} {
+      allow read: if true;
+      allow write: if isUserAdmin() || (isAuthorizedUser() && getUserData().canEdit == true);
+    }
+
+    // 6. Mensajes de Chat con Gigi
+    match /chat_messages/{messageId} {
+      allow read, create: if true;
+      allow update: if false;
+      allow delete: if isUserAdmin();
+    }
+
+    // 7. Negocios y Restaurantes
     match /negocios/{negocioId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isUserAdmin();
     }
 
     match /restaurants/{restaurantId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isUserAdmin();
     }
 
-    // 4. Reportes y Reservaciones del Vecindario
-    //    Lectura pública + escritura abierta para la app (datos de reservas)
+    // 8. Reportes y Reservaciones del Vecindario
     match /reports/{reportId} {
-      allow read: if true;
-      allow create: if true;    // Reservaciones creadas desde el bot sin auth
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read, create: if true;
+      allow update, delete: if isUserAdmin();
     }
 
-    // 5. Pedidos del vecino
+    // 9. Pedidos históricos del bot principal
     match /pedidos/{pedidoId} {
-      allow read: if true;
-      allow create: if true;
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read, create: if true;
+      allow update, delete: if isUserAdmin();
     }
 
-    // 6. Bloqueo global por defecto (todo lo demás es privado)
+    // Bloqueo global de seguridad por defecto para nuevas colecciones
     match /{document=**} {
       allow read, write: if false;
     }
