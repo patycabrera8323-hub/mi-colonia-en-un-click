@@ -33,7 +33,8 @@ export default function ExploreTab() {
       const { collection, query, where, getDocs } = await import('firebase/firestore');
       const { db } = await import('../firebase');
       
-      const realBusinessId = getBusinessId(restaurantId);
+      const restaurant = restaurants.find(r => r.id === restaurantId);
+      const realBusinessId = restaurant?.syncFromUser || getBusinessId(restaurantId);
       const q = query(collection(db, 'products'), where('businessId', '==', realBusinessId));
       const snap = await getDocs(q);
       const prodsList: any[] = [];
@@ -56,7 +57,8 @@ export default function ExploreTab() {
         const { collection, query, where, getDocs } = await import('firebase/firestore');
         const { db } = await import('../firebase');
         
-        const realBusinessId = getBusinessId(restaurantId);
+        const restaurant = restaurants.find(r => r.id === restaurantId);
+        const realBusinessId = restaurant?.syncFromUser || getBusinessId(restaurantId);
         const q = query(collection(db, 'products'), where('businessId', '==', realBusinessId));
         const snap = await getDocs(q);
         const prodsList: any[] = [];
@@ -83,7 +85,7 @@ export default function ExploreTab() {
   const categories = [
     { id: 'todos', label: 'Todos' },
     ...Array.from(new Set(restaurants.map(r => (r.cuisine ?? '').toLowerCase()).filter(Boolean)))
-      .map(c => ({
+      .map((c: string) => ({
         id: c,
         label: `${c.charAt(0).toUpperCase() + c.slice(1)}${cuisineEmojis[c] ? ' ' + cuisineEmojis[c] : ''}`
       }))

@@ -12,10 +12,30 @@ const FIREBASE_API_KEY = "AIzaSyAtKehXr1_yzMgI2IUFpGces2jjtlvTnns";
 // ─────────────────────────────────────────────
 async function fetchNegociosFromFirebase() {
   try {
-    const [negociosRes, usersRes] = await Promise.allSettled([
+    const [negociosRes, usersRes, productsRes] = await Promise.allSettled([
       fetch(`${FIRESTORE_BASE}/negocios?key=${FIREBASE_API_KEY}`),
-      fetch(`${FIRESTORE_BASE}/users?key=${FIREBASE_API_KEY}`)
+      fetch(`${FIRESTORE_BASE}/users?key=${FIREBASE_API_KEY}`),
+      fetch(`${FIRESTORE_BASE}/products?key=${FIREBASE_API_KEY}`)
     ]);
+
+    const productsMap = {};
+    if (productsRes.status === "fulfilled" && productsRes.value.ok) {
+      const data = await productsRes.value.json();
+      const docs = data.documents || [];
+      for (const doc of docs) {
+        const f = doc.fields || {};
+        const bId = f.businessId?.stringValue || "";
+        const name = f.name?.stringValue || "";
+        const price = f.price?.integerValue ?? f.price?.doubleValue ?? "";
+        const available = f.available?.booleanValue !== false;
+        if (bId && name && available) {
+          if (!productsMap[bId]) {
+            productsMap[bId] = [];
+          }
+          productsMap[bId].push({ name, price });
+        }
+      }
+    }
 
     const allNegocios = [];
     const seenNames = new Set();
@@ -35,6 +55,9 @@ async function fetchNegociosFromFirebase() {
         const activo = f.activo?.booleanValue !== false;
         if (nombre && activo) {
           const nameLower = nombre.toLowerCase().trim();
+          const docId = doc.name.split("/").pop();
+          const syncFromUser = get("syncFromUser");
+          const prods = productsMap[syncFromUser] || productsMap[docId] || [];
           allNegocios.push({
             nombre,
             tipo:        get("tipo") || get("categoria") || "Comercio",
@@ -44,6 +67,7 @@ async function fetchNegociosFromFirebase() {
             horario:     get("horario"),
             calificacion: parseFloat(f.calificacion?.doubleValue ?? f.calificacion?.integerValue ?? "4.5"),
             imagen:      get("imagen") || get("logoUrl") || "",
+            productos:   prods,
           });
           seenNames.add(nameLower);
         }
@@ -64,10 +88,12 @@ async function fetchNegociosFromFirebase() {
         const isAuthorized = f.isAuthorized?.booleanValue === true;
         const businessName = get("businessName");
         const email = get("email");
+        const id = doc.name.split("/").pop();
 
         if (isAuthorized && businessName && email !== "searmoco@gmail.com") {
           const nameLower = businessName.toLowerCase().trim();
           if (!seenNames.has(nameLower)) {
+            const prods = productsMap[id] || [];
             allNegocios.push({
               nombre:      businessName,
               tipo:        get("businessType") || get("category") || "Comercio",
@@ -77,6 +103,7 @@ async function fetchNegociosFromFirebase() {
               horario:     get("horario"),
               calificacion: 4.5,
               imagen:      get("logoUrl") || get("imagen") || "",
+              productos:   prods,
             });
             seenNames.add(nameLower);
           }
@@ -107,6 +134,10 @@ function buildSystemPrompt(negocios) {
         if (n.telefono) partes.push(`| Tel: ${n.telefono}`);
         if (n.horario) partes.push(`| ${n.horario}`);
         if (n.imagen) partes.push(`| Imagen: ${n.imagen}`);
+        if (n.productos && n.productos.length > 0) {
+          const prodList = n.productos.map(p => `${p.name} ($${p.price})`).join(", ");
+          partes.push(`| Productos que vende: ${prodList}`);
+        }
         return partes.join(" ");
       })
       .join("\n");

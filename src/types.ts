@@ -28,6 +28,7 @@ export interface Restaurant {
   image: string;
   phoneNumber: string;
   horario?: string;
+  syncFromUser?: string;
 }
 
 export interface BacheReport {

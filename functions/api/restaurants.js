@@ -52,6 +52,7 @@ function negocioDocToCard(doc) {
     image:       getFieldValue(f.imagen)      || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=500&q=80",
     phoneNumber: getFieldValue(f.telefono)    || "",
     horario:     getFieldValue(f.horario)     || "",
+    syncFromUser: getFieldValue(f.syncFromUser)|| "",
   };
 }
 
@@ -82,6 +83,7 @@ function userDocToCard(doc) {
     image:       getFieldValue(f.logoUrl)      || getFieldValue(f.imagen)  || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=500&q=80",
     phoneNumber: getFieldValue(f.phone)        || "",
     horario:     getFieldValue(f.horario)      || "",
+    syncFromUser: id,
   };
 }
 
