@@ -7,6 +7,70 @@ export default function ExploreTab() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCuisine, setSelectedCuisine] = useState('todos');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [activeSubTab, setActiveSubTab] = useState<'horarios' | 'productos' | 'envios'>('productos');
+  const [productsForBusiness, setProductsForBusiness] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+
+  const getBusinessId = (id: string) => {
+    if (id.startsWith('user_')) return id.replace('user_', '');
+    if (id.startsWith('negocio_')) return id.replace('negocio_', '');
+    return id;
+  };
+
+  const handleToggleDetails = async (restaurantId: string) => {
+    if (expandedId === restaurantId) {
+      setExpandedId(null);
+      return;
+    }
+    
+    setExpandedId(restaurantId);
+    setActiveSubTab('productos');
+    setProductsForBusiness([]);
+    setLoadingProducts(true);
+    
+    try {
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
+      const { db } = await import('../firebase');
+      
+      const realBusinessId = getBusinessId(restaurantId);
+      const q = query(collection(db, 'products'), where('businessId', '==', realBusinessId));
+      const snap = await getDocs(q);
+      const prodsList: any[] = [];
+      snap.forEach(d => {
+        prodsList.push(d.data());
+      });
+      setProductsForBusiness(prodsList);
+    } catch (err) {
+      console.error("Error loading products for restaurant:", err);
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  const handleTabChange = async (tab: 'horarios' | 'productos' | 'envios', restaurantId: string) => {
+    setActiveSubTab(tab);
+    if (tab === 'productos' && productsForBusiness.length === 0) {
+      setLoadingProducts(true);
+      try {
+        const { collection, query, where, getDocs } = await import('firebase/firestore');
+        const { db } = await import('../firebase');
+        
+        const realBusinessId = getBusinessId(restaurantId);
+        const q = query(collection(db, 'products'), where('businessId', '==', realBusinessId));
+        const snap = await getDocs(q);
+        const prodsList: any[] = [];
+        snap.forEach(d => {
+          prodsList.push(d.data());
+        });
+        setProductsForBusiness(prodsList);
+      } catch (err) {
+        console.error("Error loading products for restaurant:", err);
+      } finally {
+        setLoadingProducts(false);
+      }
+    }
+  };
 
   // Build categories dynamically from the actual data
   const cuisineEmojis: Record<string, string> = {
@@ -148,24 +212,136 @@ export default function ExploreTab() {
                 <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">{res.description}</p>
                 
                 <div className="pt-2 space-y-1.5">
-                  {(res as any).horario && (
-                    <p className="text-[10px] text-slate-500">🕐 {(res as any).horario}</p>
+                  {res.horario && !expandedId && (
+                    <p className="text-[10px] text-slate-500">🕐 {res.horario}</p>
                   )}
-                <div className="flex items-center justify-between text-xs text-slate-400 border-t border-slate-800/60 pt-1.5">
-                  <div className="flex items-center gap-1.5 max-w-[70%]">
-                    <MapPin className="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" />
-                    <span className="truncate">{res.address}</span>
+                  <div className="flex items-center justify-between text-xs text-slate-400 border-t border-slate-800/60 pt-1.5">
+                    <div className="flex items-center gap-1.5 max-w-[50%]">
+                      <MapPin className="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" />
+                      <span className="truncate">{res.address}</span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleToggleDetails(res.id)}
+                        className="flex items-center gap-1 bg-cyan-950/40 border border-cyan-500/30 hover:bg-cyan-500/20 text-cyan-400 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer"
+                      >
+                        {expandedId === res.id ? 'Ocultar' : 'Ver Detalles'}
+                      </button>
+                      <a
+                        id={`dial-${res.id}`}
+                        href={`tel:${res.phoneNumber}`}
+                        className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700/80 hover:text-cyan-400 text-slate-300 px-3 py-1.5 rounded-lg font-semibold transition"
+                      >
+                        <Phone className="w-3 h-3 text-cyan-400" />
+                        Llamar
+                      </a>
+                    </div>
                   </div>
 
-                  <a
-                    id={`dial-${res.id}`}
-                    href={`tel:${res.phoneNumber}`}
-                    className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700/80 hover:text-cyan-400 text-slate-300 px-3 py-1.5 rounded-lg font-semibold transition"
-                  >
-                    <Phone className="w-3 h-3 text-cyan-400" />
-                    Llamar
-                  </a>
-                </div>
+                  {expandedId === res.id && (
+                    <div className="mt-3 pt-3 border-t border-slate-800/60 space-y-3 animate-fade-in text-left">
+                      <div className="flex gap-1.5 border-b border-slate-800/40 pb-2 overflow-x-auto">
+                        <button
+                          onClick={() => handleTabChange('productos', res.id)}
+                          className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                            activeSubTab === 'productos'
+                              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-sm'
+                              : 'bg-slate-800/50 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          🛍️ Productos
+                        </button>
+                        <button
+                          onClick={() => handleTabChange('horarios', res.id)}
+                          className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                            activeSubTab === 'horarios'
+                              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-sm'
+                              : 'bg-slate-800/50 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          🕐 Horarios
+                        </button>
+                        <button
+                          onClick={() => handleTabChange('envios', res.id)}
+                          className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                            activeSubTab === 'envios'
+                              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-sm'
+                              : 'bg-slate-800/50 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          🛵 Envíos
+                        </button>
+                      </div>
+
+                      <div className="text-xs transition-all duration-150">
+                        {activeSubTab === 'horarios' && (
+                          <div className="bg-slate-950/40 p-3 rounded-xl border border-slate-800/60">
+                            <p className="font-bold text-slate-300 mb-1 flex items-center gap-1">
+                              <span>Horario de Atención</span>
+                            </p>
+                            <p className="text-slate-400 font-medium">
+                              {res.horario || "Abierto - Consulte el horario exacto llamando al establecimiento."}
+                            </p>
+                          </div>
+                        )}
+
+                        {activeSubTab === 'productos' && (
+                          <div className="space-y-2">
+                            {loadingProducts ? (
+                              <div className="flex items-center justify-center py-4 gap-2 text-slate-500 italic">
+                                <RefreshCw className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                                Cargando menú de productos...
+                              </div>
+                            ) : productsForBusiness.length > 0 ? (
+                              <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-1">
+                                {productsForBusiness.map((p: any) => (
+                                  <div key={p.id} className="flex items-center justify-between bg-slate-950/30 p-2.5 rounded-xl border border-slate-800 hover:border-slate-700 transition">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      {p.image ? (
+                                        <img src={p.image} alt={p.name} className="w-9 h-9 object-cover rounded-lg border border-slate-800" />
+                                      ) : (
+                                        <div className="w-9 h-9 bg-slate-800 rounded-lg flex items-center justify-center text-[10px] text-slate-500 font-bold border border-slate-700">SIN FOTO</div>
+                                      )}
+                                      <div className="min-w-0 text-left">
+                                        <p className="font-bold text-slate-200 text-xs truncate">{p.name}</p>
+                                        <p className="text-[10px] text-slate-400 leading-none mt-1">Categoría: {p.category || 'General'}</p>
+                                      </div>
+                                    </div>
+                                    <div className="text-right flex-shrink-0">
+                                      <p className="font-bold text-cyan-400 text-xs">${parseFloat(p.price).toFixed(2)}</p>
+                                      <p className={`text-[9px] mt-0.5 font-bold ${p.stock > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                        {p.stock > 0 ? `Stock: ${p.stock}` : 'Agotado'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="bg-slate-950/30 p-3.5 rounded-xl border border-slate-800 text-center text-slate-550 italic">
+                                Este negocio aún no cuenta con productos en su menú digital.
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {activeSubTab === 'envios' && (
+                          <div className="bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60 space-y-1.5">
+                            <p className="font-bold text-slate-300 flex items-center gap-1">
+                              <span>🛵 Envíos a Domicilio</span>
+                            </p>
+                            <p className="text-emerald-400 font-extrabold text-[11px] tracking-wide uppercase">
+                              ✓ ¡Sí hay envíos!
+                            </p>
+                            <p className="text-slate-400 leading-relaxed text-[11px] pt-1 border-t border-slate-800/20">
+                              Este establecimiento cuenta con entregas locales en toda la colonia. 
+                              Puedes hacer tu pedido directamente conversando con **Gigi** en la pestaña de chat o llamando por teléfono al negocio.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

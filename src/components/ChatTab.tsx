@@ -129,11 +129,25 @@ export default function ChatTab({ user, messages, setMessages }: ChatTabProps) {
   const renderMessageText = (text: string) => {
     const lines = text.split('\n');
     return lines.map((line, idx) => {
-      // Simple format of bold **text**
-      const parts = line.split(/\*\*([^*]+)\*\*/g);
+      // Regexp to split by bold **text** or markdown image ![alt](url)
+      const parts = line.split(/(\*\*.*?\*\*|!\[.*?\]\(.*?\))/g);
       const elements = parts.map((part, pIdx) => {
-        if (pIdx % 2 === 1) {
-          return <strong key={pIdx} className="font-extrabold text-[#ffffff]">{part}</strong>;
+        if (part.startsWith('**') && part.endsWith('**')) {
+          const boldText = part.slice(2, -2);
+          return <strong key={pIdx} className="font-extrabold text-[#ffffff]">{boldText}</strong>;
+        } else if (part.startsWith('![') && part.includes('](') && part.endsWith(')')) {
+          const altStart = 2;
+          const altEnd = part.indexOf('](');
+          const urlStart = altEnd + 2;
+          const urlEnd = part.length - 1;
+          const alt = part.slice(altStart, altEnd);
+          const url = part.slice(urlStart, urlEnd);
+          return (
+            <div key={pIdx} className="my-2.5 rounded-2xl overflow-hidden border border-outline-variant/10 shadow-md max-w-xs sm:max-w-sm">
+              <img src={url} alt={alt} referrerPolicy="no-referrer" className="w-full max-h-52 object-cover" />
+              {alt && <p className="text-[10px] text-center bg-surface-container-high/85 py-1 px-2.5 text-on-surface-variant">{alt}</p>}
+            </div>
+          );
         }
         return part;
       });
@@ -206,22 +220,6 @@ export default function ChatTab({ user, messages, setMessages }: ChatTabProps) {
           );
         })}
 
-        {/* Suggested chips row rendered right below the welcome message in-line */}
-        {messages.length === 0 && (
-          <div id="suggestion-chips-block" className="flex gap-2 overflow-x-auto py-2.5 pl-1 scrollbar-none select-none">
-            {suggestionChips.map((chip, idx) => (
-              <button
-                key={idx}
-                id={`chip-${idx}`}
-                onClick={() => handleSendMessage(chip.prompt)}
-                className="bg-surface-container hover:bg-surface-variant border border-outline-variant/30 text-on-surface-variant hover:text-[#00e5ff] hover:border-[#00e5ff]/50 text-xs font-bold px-4 py-2 rounded-full whitespace-nowrap transition-all duration-200 cursor-pointer active:scale-95 shadow-sm hover:shadow-[0_0_10px_rgba(0,229,255,0.15)] flex-shrink-0"
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
-        )}
-
         {/* Typing loading state */}
         {loading && (
           <div id="assistant-typing-container" className="flex flex-col gap-0.5 max-w-[85%] self-start select-none animate-pulse">
@@ -246,50 +244,66 @@ export default function ChatTab({ user, messages, setMessages }: ChatTabProps) {
       </div>
 
       {/* Input container exactly styled matching template */}
-      <div id="input-chat-footer" className="p-3 bg-transparent flex items-center gap-2 max-w-[800px] mx-auto w-full z-40">
+      <div id="input-chat-footer" className="p-3 bg-transparent flex flex-col gap-2 max-w-[800px] mx-auto w-full z-40">
         
-        {/* Rounded Input Pill with icons nested inside on the right */}
-        <div className="flex-1 flex items-center h-12 bg-surface-container-high/90 border border-outline-variant/10 rounded-full pl-5 pr-2.5 backdrop-blur-xl focus-within:border-[#00e5ff]/50 transition duration-200">
-          <input
-            type="text"
-            id="chat-input-field"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputText)}
-            placeholder="Pregunta sobre restaurantes o pídele un antojo a Gigi..."
-            className="flex-1 bg-transparent text-sm h-full outline-none text-on-surface placeholder-on-surface-variant/40"
-          />
-
-          {/* Interactive attachments nested in pill */}
-          <div className="flex items-center gap-1.5 text-on-surface-variant/70">
-            <button 
-              id="btn-attachment"
-              onClick={() => handleSimulatedTooltip('📎 Adjuntar Archivo: Puedes compartir una foto de un platillo o un menú para agregarlo a tus recomendaciones.')}
-              className="flex items-center justify-center h-8 w-8 hover:text-[#00e5ff]/80 text-[#bac9cc] active:scale-95 duration-100 cursor-pointer"
+        {/* Suggested chips row rendered right above the input bar at all times */}
+        <div id="suggestion-chips-block" className="flex gap-2 overflow-x-auto py-1 pl-1 scrollbar-none select-none w-full">
+          {suggestionChips.map((chip, idx) => (
+            <button
+              key={idx}
+              id={`chip-${idx}`}
+              onClick={() => handleSendMessage(chip.prompt)}
+              className="bg-surface-container hover:bg-surface-variant border border-outline-variant/30 text-on-surface-variant hover:text-[#00e5ff] hover:border-[#00e5ff]/50 text-xs font-bold px-4 py-2 rounded-full whitespace-nowrap transition-all duration-200 cursor-pointer active:scale-95 shadow-sm hover:shadow-[0_0_10px_rgba(0,229,255,0.15)] flex-shrink-0"
             >
-              <span className="material-symbols-outlined text-[20px]">attach_file</span>
+              {chip.label}
             </button>
-            <button 
-              id="btn-voice-mic"
-              onClick={() => handleSimulatedTooltip('🎙️ Dictado de voz para antojos activado. Indica qué te gustaría comer y buscaré opciones.')}
-              className="flex items-center justify-center h-8 w-8 hover:text-[#00e5ff]/80 text-[#bac9cc] active:scale-95 duration-100 cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[20px]">mic</span>
-            </button>
-          </div>
+          ))}
         </div>
 
-        {/* Separated solid Cyan circular send action button */}
-        <button
-          id="btn-send-message"
-          onClick={() => handleSendMessage(inputText)}
-          disabled={!inputText.trim() || loading}
-          className="flex items-center justify-center h-12 w-12 rounded-full bg-primary-container text-on-primary-container glow-cyan group active:scale-95 duration-200 disabled:opacity-40 disabled:scale-100 disabled:bg-surface-variant disabled:text-on-surface-variant/40"
-        >
-          <span className="material-symbols-outlined text-[22px] text-on-primary-container transform group-hover:rotate-12 duration-200">
-            send
-          </span>
-        </button>
+        <div className="w-full flex items-center gap-2">
+          {/* Rounded Input Pill with icons nested inside on the right */}
+          <div className="flex-1 flex items-center h-12 bg-surface-container-high/90 border border-outline-variant/10 rounded-full pl-5 pr-2.5 backdrop-blur-xl focus-within:border-[#00e5ff]/50 transition duration-200">
+            <input
+              type="text"
+              id="chat-input-field"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputText)}
+              placeholder="Pregunta sobre restaurantes o pídele un antojo a Gigi..."
+              className="flex-1 bg-transparent text-sm h-full outline-none text-on-surface placeholder-on-surface-variant/40"
+            />
+
+            {/* Interactive attachments nested in pill */}
+            <div className="flex items-center gap-1.5 text-on-surface-variant/70">
+              <button 
+                id="btn-attachment"
+                onClick={() => handleSimulatedTooltip('📎 Adjuntar Archivo: Puedes compartir una foto de un platillo o un menú para agregarlo a tus recomendaciones.')}
+                className="flex items-center justify-center h-8 w-8 hover:text-[#00e5ff]/80 text-[#bac9cc] active:scale-95 duration-100 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">attach_file</span>
+              </button>
+              <button 
+                id="btn-voice-mic"
+                onClick={() => handleSimulatedTooltip('🎙️ Dictado de voz para antojos activado. Indica qué te gustaría comer y buscaré opciones.')}
+                className="flex items-center justify-center h-8 w-8 hover:text-[#00e5ff]/80 text-[#bac9cc] active:scale-95 duration-100 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">mic</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Separated solid Cyan circular send action button */}
+          <button
+            id="btn-send-message"
+            onClick={() => handleSendMessage(inputText)}
+            disabled={!inputText.trim() || loading}
+            className="flex items-center justify-center h-12 w-12 rounded-full bg-primary-container text-on-primary-container glow-cyan group active:scale-95 duration-200 disabled:opacity-40 disabled:scale-100 disabled:bg-surface-variant disabled:text-on-surface-variant/40"
+          >
+            <span className="material-symbols-outlined text-[22px] text-on-primary-container transform group-hover:rotate-12 duration-200">
+              send
+            </span>
+          </button>
+        </div>
 
       </div>
     </div>

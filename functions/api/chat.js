@@ -8,36 +8,83 @@ const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_
 const FIREBASE_API_KEY = "AIzaSyAtKehXr1_yzMgI2IUFpGces2jjtlvTnns";
 
 // ─────────────────────────────────────────────
-// Leer negocios activos desde Firebase
+// Leer negocios activos desde Firebase (Doble origen: negocios y users)
 // ─────────────────────────────────────────────
 async function fetchNegociosFromFirebase() {
   try {
-    const res = await fetch(`${FIRESTORE_BASE}/negocios?key=${FIREBASE_API_KEY}`);
-    if (!res.ok) return null;
+    const [negociosRes, usersRes] = await Promise.allSettled([
+      fetch(`${FIRESTORE_BASE}/negocios?key=${FIREBASE_API_KEY}`),
+      fetch(`${FIRESTORE_BASE}/users?key=${FIREBASE_API_KEY}`)
+    ]);
 
-    const data = await res.json();
-    const docs = data.documents || [];
+    const allNegocios = [];
+    const seenNames = new Set();
 
-    return docs
-      .map((doc) => {
+    // 1. Procesar 'negocios'
+    if (negociosRes.status === "fulfilled" && negociosRes.value.ok) {
+      const data = await negociosRes.value.json();
+      const docs = data.documents || [];
+      for (const doc of docs) {
         const f = doc.fields || {};
         const get = (field) => {
           const v = f[field];
           if (!v) return "";
           return v.stringValue ?? v.doubleValue ?? v.integerValue ?? v.booleanValue ?? "";
         };
-        return {
-          nombre:      get("nombre"),
-          tipo:        get("tipo") || get("categoria"),
-          descripcion: get("descripcion"),
-          direccion:   get("direccion"),
-          telefono:    get("telefono"),
-          horario:     get("horario"),
-          calificacion: parseFloat(f.calificacion?.doubleValue ?? f.calificacion?.integerValue ?? "4.5"),
-          activo:      f.activo?.booleanValue !== false,
+        const nombre = get("nombre");
+        const activo = f.activo?.booleanValue !== false;
+        if (nombre && activo) {
+          const nameLower = nombre.toLowerCase().trim();
+          allNegocios.push({
+            nombre,
+            tipo:        get("tipo") || get("categoria") || "Comercio",
+            descripcion: get("descripcion") || `Negocio local: ${nombre}`,
+            direccion:   get("direccion"),
+            telefono:    get("telefono"),
+            horario:     get("horario"),
+            calificacion: parseFloat(f.calificacion?.doubleValue ?? f.calificacion?.integerValue ?? "4.5"),
+            imagen:      get("imagen") || get("logoUrl") || "",
+          });
+          seenNames.add(nameLower);
+        }
+      }
+    }
+
+    // 2. Procesar 'users'
+    if (usersRes.status === "fulfilled" && usersRes.value.ok) {
+      const data = await usersRes.value.json();
+      const docs = data.documents || [];
+      for (const doc of docs) {
+        const f = doc.fields || {};
+        const get = (field) => {
+          const v = f[field];
+          if (!v) return "";
+          return v.stringValue ?? v.doubleValue ?? v.integerValue ?? v.booleanValue ?? "";
         };
-      })
-      .filter(n => n.nombre && n.activo);
+        const isAuthorized = f.isAuthorized?.booleanValue === true;
+        const businessName = get("businessName");
+        const email = get("email");
+
+        if (isAuthorized && businessName && email !== "searmoco@gmail.com") {
+          const nameLower = businessName.toLowerCase().trim();
+          if (!seenNames.has(nameLower)) {
+            allNegocios.push({
+              nombre:      businessName,
+              tipo:        get("businessType") || get("category") || "Comercio",
+              descripcion: get("description") || `Negocio local: ${businessName}`,
+              direccion:   get("location") || get("address"),
+              telefono:    get("phone"),
+              horario:     get("horario"),
+              calificacion: 4.5,
+              imagen:      get("logoUrl") || get("imagen") || "",
+            });
+            seenNames.add(nameLower);
+          }
+        }
+      }
+    }
+
+    return allNegocios;
   } catch (err) {
     console.warn("No se pudo leer negocios de Firebase:", err.message);
     return null;
@@ -59,16 +106,17 @@ function buildSystemPrompt(negocios) {
         if (n.direccion) partes.push(`| ${n.direccion}`);
         if (n.telefono) partes.push(`| Tel: ${n.telefono}`);
         if (n.horario) partes.push(`| ${n.horario}`);
+        if (n.imagen) partes.push(`| Imagen: ${n.imagen}`);
         return partes.join(" ");
       })
       .join("\n");
   } else {
     // Fallback si Firebase no responde
-    negociosStr = `1. Tacos El Güero (mexicana) ⭐4.8 | Av. Juventud #123 | Tel:555-019-1234
-2. La Piazza Bella (italiana) ⭐4.6 | Calle Los Pinos #456 | Tel:555-019-5678
-3. Burger & Co. Craft (hamburguesas) ⭐4.7 | Blvd. Margaritas #789 | Tel:555-019-9012
-4. Cafetería La Selva (café) ⭐4.5 | Av. Lázaro Cárdenas #321 | Tel:555-019-3344
-5. Sabor de Asia (asiática) ⭐4.4 | Calle Palmas #202 | Tel:555-019-5566`;
+    negociosStr = `1. Tacos El Güero (mexicana) ⭐4.8 | Av. Juventud #123 | Tel:555-019-1234 | Imagen: https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=500&q=80
+2. La Piazza Bella (italiana) ⭐4.6 | Calle Los Pinos #456 | Tel:555-019-5678 | Imagen: https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=500&q=80
+3. Burger & Co. Craft (hamburguesas) ⭐4.7 | Blvd. Margaritas #789 | Tel:555-019-9012 | Imagen: https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400
+4. Cafetería La Selva (café) ⭐4.5 | Av. Lázaro Cárdenas #321 | Tel:555-019-3344 | Imagen: https://images.unsplash.com/photo-1551024601-bec78aea704b?w=400
+5. Sabor de Asia (asiática) ⭐4.4 | Calle Palmas #202 | Tel:555-019-5566 | Imagen: https://images.unsplash.com/photo-1553530979-7ee52a2670c4?w=400`;
   }
 
   return `Eres Gigi, asistente de "Mi Colonia en un Click". Responde SIEMPRE en español mexicano, alegre y breve (máximo 3 oraciones). Usa: "¡Hola vecino!", "¡Órale!", "¡Ándale!".
@@ -76,7 +124,8 @@ function buildSystemPrompt(negocios) {
 Negocios disponibles en la colonia:
 ${negociosStr}
 
-Para reservas pide: negocio, personas, fecha y hora. Genera código 5 dígitos al confirmar.`;
+Para reservas pide: negocio, personas, fecha y hora. Genera código 5 dígitos al confirmar.
+Cuando recomiendes un negocio que tenga una URL de imagen, incluye la imagen en tu respuesta usando markdown: ![nombre del negocio](url_de_la_imagen) al final de tu recomendación.`;
 }
 
 function corsHeaders() {

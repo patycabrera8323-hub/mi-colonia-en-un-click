@@ -27,6 +27,7 @@ export interface Restaurant {
   address: string;
   image: string;
   phoneNumber: string;
+  horario?: string;
 }
 
 export interface BacheReport {
